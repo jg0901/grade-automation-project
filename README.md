@@ -9,7 +9,8 @@ Excel stays the input (scores entered per exam sheet); Python validates, compute
 |---|---|
 | `Calculus_Dashboard Template.xlsx` | Blank gradebook template (Main + LE1–LE4, FE, SW sheets) |
 | `Calculus_Grades_AY2526_2nd_sem.xlsx` | Anonymized sample gradebook used for testing |
-| `Calculus Grade Sender.ipynb` | Original notebook (to be replaced by the Python package) |
+| `grade_automation/` | Python package: `config` (settings), `load` (read workbook), `notify` (render + send), `__main__` (CLI) |
+| `tests/` | pytest suite run against the sample workbook |
 | `.env.example` | Template for credentials and run settings |
 
 ## Grading policy (as implemented in the Excel template)
@@ -38,3 +39,30 @@ Never commit real student data. Only the anonymized sample and the blank templat
 pip install -r requirements.txt
 cp .env.example .env   # then fill in
 ```
+
+## Usage
+
+Everything is a dry run unless you say otherwise.
+
+```bash
+# 1. Render one HTML file per student to output/previews/ — sends nothing
+python -m grade_automation preview
+
+# 2. Show who would receive what (still sends nothing)
+python -m grade_automation send
+
+# 3. Send. With TEST_MODE=true in .env, every email goes to TEST_EMAIL.
+python -m grade_automation send --confirm
+
+# 4. For the real send: set TEST_MODE=false in .env, then
+python -m grade_automation send --confirm
+```
+
+Safety features:
+
+- Students without an email, without a final grade (Absent/LOA), or with a blank equivalent are listed as skipped with the reason, never silently dropped.
+- Every send is appended to `output/sent_log.csv`. Re-running skips anyone already logged as sent; use `--resend` to override.
+- Sending refuses to start if `.env` still has placeholder values.
+- Maxima (LE/FE out-of) are read from row 2 of the Main sheet, not hardcoded.
+
+Run the tests with `python -m pytest`.
