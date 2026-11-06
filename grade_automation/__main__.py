@@ -13,6 +13,7 @@ what it would do, and `send` refuses to run while validation reports errors.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import smtplib
 import sys
 
@@ -68,9 +69,14 @@ def _print_summary(gradebook) -> None:
     print(f"Gradebook: {gradebook.source}")
     print(f"Students : {len(gradebook.students)}  (sendable {len(sendable)}, skipped {len(skipped)})")
     if skipped:
-        print("Skipped:")
-        for s, reason in skipped:
-            print(f"  row {s.row_number:>4}  {s.student_number:<12} {reason}")
+        if len(skipped) <= max(10, len(gradebook.students) // 2):
+            print("Skipped:")
+            for s, reason in skipped:
+                print(f"  row {s.row_number:>4}  {s.student_number:<12} {reason}")
+        else:
+            # Most of the class is skipped: summarise by reason instead of listing everyone.
+            by_reason = Counter(reason for _, reason in skipped)
+            print("Skipped: " + "; ".join(f"{reason} ({n})" for reason, n in by_reason.most_common()))
     if not sendable:
         print("WARNING: nothing to send — check the Email Address column.")
 
@@ -82,7 +88,7 @@ def cmd_preview(args) -> int:
     print(f"Grade source: {settings.grade_source}")
     emails = render_all(gradebook, settings)
     paths = write_previews(emails, settings.preview_dir)
-    print(f"Wrote {len(paths)} preview(s) to {settings.preview_dir}/")
+    print(f"Wrote {len(paths)} preview(s) to {settings.preview_dir}")
     return 0
 
 
@@ -141,7 +147,7 @@ def cmd_send(args) -> int:
             print(f"      {e.student_number:<12} {e.recipient}")
         if len(to_send) > 3:
             print(f"      ... and {len(to_send) - 3} more")
-        print(f"  Previews            : {settings.preview_dir}/ (run 'preview' if you haven't checked them)")
+        print(f"  Previews            : {settings.preview_dir} (run 'preview' if you haven't checked them)")
         print()
         if not sys.stdin.isatty():
             print("Refusing live send: no interactive terminal to approve from.")
