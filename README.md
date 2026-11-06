@@ -9,7 +9,7 @@ Excel stays the input (scores entered per exam sheet); Python validates, compute
 |---|---|
 | `Calculus_Dashboard Template.xlsx` | Blank gradebook template (Main + LE1–LE4, FE, SW sheets) |
 | `Calculus_Grades_AY2526_2nd_sem.xlsx` | Anonymized sample gradebook used for testing |
-| `grade_automation/` | Python package: `config` (settings), `load` (read workbook), `notify` (render + send), `__main__` (CLI) |
+| `grade_automation/` | Python package: `config` (settings), `load` (read Main sheet), `grading` (policy in Python), `validate` (checks), `notify` (render + send), `__main__` (CLI) |
 | `tests/` | pytest suite run against the sample workbook |
 | `.env.example` | Template for credentials and run settings |
 
@@ -25,9 +25,24 @@ Final grade is rounded to 2 decimals (half-up) before mapping to the UP equivale
 
 ## Roadmap
 
-1. **Validate** — detect missing/invalid scores, scores over max, duplicate students, Main↔exam-sheet mismatches (matched on student number, not row position).
-2. **Compute** — reimplement the grading rules in Python; reconcile against Excel results; flag discrepancies.
-3. **Notify** — HTML preview, send log, duplicate-send protection, explicit confirm step.
+1. **Validate** ✅ — missing/invalid scores, scores over max, duplicate students, Main↔exam-sheet mismatches (matched on student number, not row position), and a Python recomputation of every final grade compared against Excel's.
+2. **Compute** — make Python the source of truth for Final Grade / Equiv (the formula already exists in `grading.py` and reconciles 1:1 with the Excel template); Excel formulas become a cross-check only.
+3. **Notify** ✅ (basic) — HTML preview, send log, duplicate-send protection, explicit confirm step. Remaining: final approval summary before a live send.
+
+## Validation checks
+
+| Check | Severity | What it catches |
+|---|---|---|
+| `duplicate_student` | error | same student number twice (Main or any exam sheet) |
+| `missing_score` / `invalid_status` | error | blank cell, or text other than `Excused` / `Absent` / `LOA` |
+| `score_out_of_range` / `item_out_of_range` | error | score below 0 or above the max in the maxima row |
+| `multiple_excused` | error | more than one long exam excused |
+| `main_sheet_mismatch` | error | Main's LE/FE/SW value ≠ that student's Total on the exam sheet — i.e. the `='LE1'!D:D` row references drifted |
+| `student_missing_in_sheet` / `_in_main` | error | roster differs between Main and an exam sheet |
+| `recompute_mismatch` | error | Excel's Final Grade / Rounded_FG / Orig_Equiv / Equiv ≠ Python's |
+| `fe_not_numeric`, `final_grade_blank`, `total_without_items`, `item_max_missing`, `missing_first_name`, `bad_email` | warning | review recommended |
+
+`send` refuses to run while there are errors (`--skip-validation` overrides, not recommended).
 
 ## Data handling
 
@@ -45,6 +60,9 @@ cp .env.example .env   # then fill in
 Everything is a dry run unless you say otherwise.
 
 ```bash
+# 0. Check the workbook; writes output/validation_report.csv
+python -m grade_automation validate
+
 # 1. Render one HTML file per student to output/previews/ — sends nothing
 python -m grade_automation preview
 

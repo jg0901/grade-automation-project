@@ -1,11 +1,12 @@
 """Command-line entry point.
 
+    python -m grade_automation validate           # check the workbook, write a CSV report
     python -m grade_automation preview            # render HTML previews, send nothing
     python -m grade_automation send --confirm     # actually send (TEST_MODE still honoured)
     python -m grade_automation send --confirm --resend   # ignore the sent log
 
 Dry run is the default everywhere. `send` without `--confirm` only prints
-what it would do.
+what it would do, and `send` refuses to run while validation reports errors.
 """
 
 from __future__ import annotations
@@ -17,6 +18,25 @@ import sys
 from .config import load_settings
 from .load import GradebookError, load_gradebook
 from .notify import render_all, send_emails, write_previews
+from .validate import format_report, validate
+
+
+def _run_validation(gradebook, settings, *, quiet=False) -> bool:
+    rep = validate(gradebook)
+    path = rep.write_csv(settings.output_dir / "validation_report.csv")
+    if not quiet or rep.issues:
+        print(format_report(rep))
+        if rep.issues:
+            print(f"Report: {path}")
+    return rep.ok
+
+
+def cmd_validate(args) -> int:
+    settings = load_settings(args.env)
+    gradebook = load_gradebook(settings.grades_file, settings.grades_sheet)
+    _print_summary(gradebook)
+    print()
+    return 0 if _run_validation(gradebook, settings) else 1
 
 
 def _print_summary(gradebook) -> None:
@@ -46,6 +66,13 @@ def cmd_send(args) -> int:
     settings = load_settings(args.env)
     gradebook = load_gradebook(settings.grades_file, settings.grades_sheet)
     _print_summary(gradebook)
+    print()
+    if not _run_validation(gradebook, settings, quiet=True):
+        if args.skip_validation:
+            print("WARNING: continuing despite validation errors (--skip-validation).")
+        else:
+            print("Refusing to send while validation has errors. Fix them, or pass --skip-validation.")
+            return 5
     emails = render_all(gradebook, settings)
     if not emails:
         return 1
@@ -86,12 +113,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--env", default=None, help="path to .env (default: ./.env)")
     sub = p.add_subparsers(dest="command", required=True)
 
+    sv = sub.add_parser("validate", help="check the workbook; writes output/validation_report.csv")
+    sv.set_defaults(func=cmd_validate)
+
     sp = sub.add_parser("preview", help="render HTML previews; sends nothing")
     sp.set_defaults(func=cmd_preview)
 
     ss = sub.add_parser("send", help="send emails (dry run unless --confirm)")
     ss.add_argument("--confirm", action="store_true", help="actually send")
     ss.add_argument("--resend", action="store_true", help="ignore the sent log")
+    ss.add_argument("--skip-validation", action="store_true",
+                    help="send even if validation reports errors (not recommended)")
     ss.set_defaults(func=cmd_send)
 
     args = p.parse_args(argv)
