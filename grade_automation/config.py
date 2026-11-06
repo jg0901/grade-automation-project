@@ -41,6 +41,10 @@ class Settings:
     exam_review_schedule: str     # e.g. "June 8, 2026 (Monday), from 11:00 AM to 2:00 PM"
     crs_upload_date: str          # e.g. "June 9, 2026"
 
+    # Which numbers go into the emails: "python" (policy in grading.py, the
+    # default) or "excel" (the workbook's cached Final Grade / Equiv columns).
+    grade_source: str = "python"
+
     # Output
     output_dir: Path = field(default_factory=lambda: Path("output"))
 
@@ -63,6 +67,8 @@ class Settings:
             problems.append("TEST_MODE is on but TEST_EMAIL is not a real address")
         if "[insert" in self.sender_name.lower() or not self.sender_name.strip():
             problems.append("SENDER_NAME is not set")
+        if self.grade_source not in {"python", "excel"}:
+            problems.append(f"GRADE_SOURCE must be 'python' or 'excel', got {self.grade_source!r}")
         return problems
 
 
@@ -85,5 +91,6 @@ def load_settings(env_file: str | os.PathLike | None = None) -> Settings:
         clarification_deadline=os.getenv("CLARIFICATION_DEADLINE", "[date]"),
         exam_review_schedule=os.getenv("EXAM_REVIEW_SCHEDULE", "[schedule]"),
         crs_upload_date=os.getenv("CRS_UPLOAD_DATE", "[date]"),
+        grade_source=os.getenv("GRADE_SOURCE", "python").strip().lower(),
         output_dir=Path(os.getenv("OUTPUT_DIR", "output")),
     )

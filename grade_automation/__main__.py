@@ -1,6 +1,7 @@
 """Command-line entry point.
 
     python -m grade_automation validate           # check the workbook, write a CSV report
+    python -m grade_automation compute            # final grades from Python -> output/final_grades.{csv,xlsx}
     python -m grade_automation preview            # render HTML previews, send nothing
     python -m grade_automation send --confirm     # actually send (TEST_MODE still honoured)
     python -m grade_automation send --confirm --resend   # ignore the sent log
@@ -17,8 +18,30 @@ import sys
 
 from .config import load_settings
 from .load import GradebookError, load_gradebook
+from .compute import compute_grades, format_summary, graded_gradebook, write_csv, write_xlsx
 from .notify import render_all, send_emails, write_previews
 from .validate import format_report, validate
+
+
+def _load(settings):
+    """Load the workbook and, unless GRADE_SOURCE=excel, replace the grade
+    columns with the Python-computed values. Returns (raw, for_emails)."""
+    raw = load_gradebook(settings.grades_file, settings.grades_sheet)
+    if settings.grade_source == "excel":
+        return raw, raw
+    return raw, graded_gradebook(raw)
+
+
+def cmd_compute(args) -> int:
+    settings = load_settings(args.env)
+    raw = load_gradebook(settings.grades_file, settings.grades_sheet)
+    computed = compute_grades(raw)
+    print(f"Gradebook: {raw.source}")
+    print(format_summary(computed))
+    csv_path = write_csv(computed, settings.output_dir / "final_grades.csv")
+    xlsx_path = write_xlsx(computed, settings.output_dir / "final_grades.xlsx")
+    print(f"Wrote {csv_path} and {xlsx_path}")
+    return 0 if all(not c.discrepancies() for c in computed) else 1
 
 
 def _run_validation(gradebook, settings, *, quiet=False) -> bool:
@@ -54,8 +77,9 @@ def _print_summary(gradebook) -> None:
 
 def cmd_preview(args) -> int:
     settings = load_settings(args.env)
-    gradebook = load_gradebook(settings.grades_file, settings.grades_sheet)
+    _, gradebook = _load(settings)
     _print_summary(gradebook)
+    print(f"Grade source: {settings.grade_source}")
     emails = render_all(gradebook, settings)
     paths = write_previews(emails, settings.preview_dir)
     print(f"Wrote {len(paths)} preview(s) to {settings.preview_dir}/")
@@ -64,10 +88,12 @@ def cmd_preview(args) -> int:
 
 def cmd_send(args) -> int:
     settings = load_settings(args.env)
-    gradebook = load_gradebook(settings.grades_file, settings.grades_sheet)
+    raw, gradebook = _load(settings)
     _print_summary(gradebook)
+    print(f"Grade source: {settings.grade_source}")
     print()
-    if not _run_validation(gradebook, settings, quiet=True):
+    # Validation always runs on the raw workbook (it compares Excel vs Python).
+    if not _run_validation(raw, settings, quiet=True):
         if args.skip_validation:
             print("WARNING: continuing despite validation errors (--skip-validation).")
         else:
@@ -115,6 +141,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sv = sub.add_parser("validate", help="check the workbook; writes output/validation_report.csv")
     sv.set_defaults(func=cmd_validate)
+
+    sc = sub.add_parser("compute", help="compute final grades in Python; writes output/final_grades.{csv,xlsx}")
+    sc.set_defaults(func=cmd_compute)
 
     sp = sub.add_parser("preview", help="render HTML previews; sends nothing")
     sp.set_defaults(func=cmd_preview)

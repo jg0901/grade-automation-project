@@ -26,7 +26,7 @@ Final grade is rounded to 2 decimals (half-up) before mapping to the UP equivale
 ## Roadmap
 
 1. **Validate** ✅ — missing/invalid scores, scores over max, duplicate students, Main↔exam-sheet mismatches (matched on student number, not row position), and a Python recomputation of every final grade compared against Excel's.
-2. **Compute** — make Python the source of truth for Final Grade / Equiv (the formula already exists in `grading.py` and reconciles 1:1 with the Excel template); Excel formulas become a cross-check only.
+2. **Compute** ✅ — Python is the source of truth for Final Grade / Equiv (`grading.py`, reconciles 1:1 with the Excel template). `compute` writes `output/final_grades.{csv,xlsx}` with a Discrepancies sheet; emails use the Python values unless `GRADE_SOURCE=excel`.
 3. **Notify** ✅ (basic) — HTML preview, send log, duplicate-send protection, explicit confirm step. Remaining: final approval summary before a live send.
 
 ## Validation checks
@@ -43,6 +43,10 @@ Final grade is rounded to 2 decimals (half-up) before mapping to the UP equivale
 | `fe_not_numeric`, `final_grade_blank`, `total_without_items`, `item_max_missing`, `missing_first_name`, `bad_email` | warning | review recommended |
 
 `send` refuses to run while there are errors (`--skip-validation` overrides, not recommended).
+
+### Known template quirk
+
+`Rounded_FG` in the Main sheet is `=ROUND(E3,2)`, which shows `0.00` for students with no final grade (Absent/LOA). It is cosmetic — `Equiv` still comes out blank — but `=IF(E3="","",ROUND(E3,2))` is the cleaner formula. The Python side treats "no grade on both sides" as consistent, so this is not reported as a discrepancy.
 
 ## Data handling
 
@@ -62,6 +66,10 @@ Everything is a dry run unless you say otherwise.
 ```bash
 # 0. Check the workbook; writes output/validation_report.csv
 python -m grade_automation validate
+
+# 0b. Final grades from Python -> output/final_grades.csv + .xlsx
+#     (sheets: Final Grades, Discrepancies vs Excel, Summary). Exit code 1 if anything differs.
+python -m grade_automation compute
 
 # 1. Render one HTML file per student to output/previews/ — sends nothing
 python -m grade_automation preview
