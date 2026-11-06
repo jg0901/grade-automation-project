@@ -46,9 +46,9 @@ Final grade is rounded to 2 decimals (half-up) before mapping to the UP equivale
 
 `send` refuses to run while there are errors (`--skip-validation` overrides, not recommended).
 
-### Known template quirk
+### Template note
 
-`Rounded_FG` in the Main sheet is `=ROUND(E3,2)`, which shows `0.00` for students with no final grade (Absent/LOA). It is cosmetic — `Equiv` still comes out blank — but `=IF(E3="","",ROUND(E3,2))` is the cleaner formula. The Python side treats "no grade on both sides" as consistent, so this is not reported as a discrepancy.
+`Rounded_FG` in the Main sheet is `=IF(E3="","",ROUND(E3,2))` so it stays blank for students with no final grade (Absent/LOA). Workbooks built from an older copy of the template may still have `=ROUND(E3,2)`, which shows `0.00` there; that is cosmetic and is not reported as a discrepancy.
 
 ## Data handling
 

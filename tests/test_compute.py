@@ -42,9 +42,19 @@ def test_ungraded_reason_is_specific(computed):
     assert c.reason.startswith("no grade:") and "LE4=LOA" in c.reason and "FE=LOA" in c.reason
 
 
-def test_ungraded_rounded_fg_quirk_not_flagged(computed):
-    # Excel's =ROUND(E,2) gives 0 for a blank grade; Python gives None. Not a discrepancy.
+def test_ungraded_rounded_fg_is_blank_in_fixed_template(computed):
+    # Template now uses =IF(E="","",ROUND(E,2)); both sides blank for an ungraded student.
     c = next(c for c in computed if c.student_number == "SN262-006")
+    assert c.student.rounded_fg is None and c.rounded_fg is None
+    assert c.discrepancies() == []
+
+
+def test_old_template_rounded_fg_zero_quirk_not_flagged(gb):
+    # Workbooks built from the old template have =ROUND(E,2), which yields 0 for a
+    # blank grade. That must not be reported as a discrepancy.
+    s = next(s for s in gb.students if s.student_number == "SN262-006")
+    old_style = replace(gb, students=[replace(s, rounded_fg=0.0)])
+    c = compute_grades(old_style)[0]
     assert c.student.rounded_fg == 0.0 and c.rounded_fg is None
     assert c.discrepancies() == []
 
