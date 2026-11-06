@@ -1,5 +1,7 @@
 # grade-automation-project
 
+![tests](https://github.com/jg0901/grade-automation-project/actions/workflows/tests.yml/badge.svg)
+
 Automates final-grade computation and student notification for a Calculus course.
 Excel stays the input (scores entered per exam sheet); Python validates, computes, reconciles against the Excel formulas, and sends the grade emails.
 
@@ -27,7 +29,7 @@ Final grade is rounded to 2 decimals (half-up) before mapping to the UP equivale
 
 1. **Validate** ✅ — missing/invalid scores, scores over max, duplicate students, Main↔exam-sheet mismatches (matched on student number, not row position), and a Python recomputation of every final grade compared against Excel's.
 2. **Compute** ✅ — Python is the source of truth for Final Grade / Equiv (`grading.py`, reconciles 1:1 with the Excel template). `compute` writes `output/final_grades.{csv,xlsx}` with a Discrepancies sheet; emails use the Python values unless `GRADE_SOURCE=excel`.
-3. **Notify** ✅ (basic) — HTML preview, send log, duplicate-send protection, explicit confirm step. Remaining: final approval summary before a live send.
+3. **Notify** ✅ — HTML preview, send log, duplicate-send protection, and for a live send a summary (count, skips, sender, first recipients) plus a typed `SEND <n>` approval.
 
 ## Validation checks
 
@@ -82,10 +84,12 @@ python -m grade_automation send --confirm
 
 # 4. For the real send: set TEST_MODE=false in .env, then
 python -m grade_automation send --confirm
+#    You get a summary and must type  SEND <n>  (n = number of emails) to proceed.
 ```
 
 Safety features:
 
+- A live send (TEST_MODE=false) prints a summary and requires typing `SEND <n>` in an interactive terminal; it refuses to run non-interactively.
 - Students without an email, without a final grade (Absent/LOA), or with a blank equivalent are listed as skipped with the reason, never silently dropped.
 - Every send is appended to `output/sent_log.csv`. Re-running skips anyone already logged as sent; use `--resend` to override.
 - Sending refuses to start if `.env` still has placeholder values.

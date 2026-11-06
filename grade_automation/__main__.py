@@ -19,7 +19,7 @@ import sys
 from .config import load_settings
 from .load import GradebookError, load_gradebook
 from .compute import compute_grades, format_summary, graded_gradebook, write_csv, write_xlsx
-from .notify import render_all, send_emails, write_previews
+from .notify import already_sent, render_all, send_emails, write_previews
 from .validate import format_report, validate
 
 
@@ -93,7 +93,8 @@ def cmd_send(args) -> int:
     print(f"Grade source: {settings.grade_source}")
     print()
     # Validation always runs on the raw workbook (it compares Excel vs Python).
-    if not _run_validation(raw, settings, quiet=True):
+    validation_ok = _run_validation(raw, settings, quiet=True)
+    if not validation_ok:
         if args.skip_validation:
             print("WARNING: continuing despite validation errors (--skip-validation).")
         else:
@@ -112,11 +113,43 @@ def cmd_send(args) -> int:
             print("  -", p)
         return 2
 
+    done = set() if (args.resend or settings.test_mode) else already_sent(settings.sent_log)
+    to_send = [e for e in emails if e.student_number not in done]
+
     if not args.confirm:
-        print(f"\nDRY RUN: would send {len(emails)} email(s). Re-run with --confirm to send.")
-        for e in emails:
+        print(f"\nDRY RUN: would send {len(to_send)} email(s)"
+              + (f", skip {len(done)} already sent" if done else "")
+              + ". Re-run with --confirm to send.")
+        for e in to_send:
             print(f"  {e.student_number:<12} -> {e.recipient}")
         return 0
+
+    if not settings.test_mode:
+        # Live send: show exactly what is about to happen and require a typed approval.
+        print("\n" + "=" * 60)
+        print("LIVE SEND — this goes to real students")
+        print("=" * 60)
+        print(f"  Emails to send      : {len(to_send)}")
+        print(f"  Already sent (skip) : {len(done)}")
+        print(f"  No grade (skip)     : {len(gradebook.skipped())}")
+        print(f"  Grade source        : {settings.grade_source}")
+        print(f"  Validation          : {'passed' if validation_ok else 'ERRORS (overridden)'}")
+        print(f"  From                : {settings.sender_name} <{settings.sender_email}>")
+        print(f"  Subject             : {settings.email_subject}")
+        print("  First recipients    :")
+        for e in to_send[:3]:
+            print(f"      {e.student_number:<12} {e.recipient}")
+        if len(to_send) > 3:
+            print(f"      ... and {len(to_send) - 3} more")
+        print(f"  Previews            : {settings.preview_dir}/ (run 'preview' if you haven't checked them)")
+        print()
+        if not sys.stdin.isatty():
+            print("Refusing live send: no interactive terminal to approve from.")
+            return 6
+        answer = input(f"Type SEND {len(to_send)} to continue, anything else to abort: ").strip()
+        if answer != f"SEND {len(to_send)}":
+            print("Aborted. Nothing was sent.")
+            return 0
 
     try:
         summary = send_emails(emails, settings, resend=args.resend)
